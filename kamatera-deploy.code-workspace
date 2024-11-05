@@ -1,0 +1,50 @@
+{
+  "folders": [
+    {
+      "path": "."
+    }
+  ],
+  "settings": {
+    "editor.bracketPairColorization.enabled": true,
+    "editor.guides.bracketPairs": true,
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.codeActionsOnSave": ["source.fixAll.eslint"],
+    "eslint.validate": ["javascript", "javascriptreact", "typescript", "vue"],
+    "typescript.tsdk": "node_modules/typescript/lib",
+    "exportall.config.folderListener": [
+      "/backend/src/webserver/controllers/decorators"
+    ],
+    "[nginx]": {
+      "editor.defaultFormatter": "raynigon.nginx-formatter"
+    }
+  },
+  "extensions": {
+    // List of extensions which should be recommended for users of this workspace.
+    "recommendations": [
+      "dbaeumer.vscode-eslint",
+      "esbenp.prettier-vscode",
+      "editorconfig.editorconfig",
+      "vue.volar",
+      "wayou.vscode-todo-highlight"
+    ],
+    "unwantedRecommendations": [
+      "octref.vetur",
+      "hookyqr.beautify",
+      "dbaeumer.jshint",
+      "ms-vscode.vscode-typescript-tslint-plugin"
+    ]
+  },
+  "launch": {
+    "version": "0.2.0",
+    "configurations": [
+      {
+        "name": "Sync kamatera",
+        "type": "debugpy",
+        "request": "launch",
+        "program": "${workspaceFolder}/.scripts/sync.py",
+        "console": "integratedTerminal"
+      }
+    ]
+  }
+}
