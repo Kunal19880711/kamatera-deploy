@@ -47,6 +47,7 @@ def sync_deployment():
         "letsencrypt",
         "__pycache__",
         "README.md",
+        "scalarchatterbox",
     ]
     excludes = [f"--exclude={item}" for item in excluded]
     rsync(source, destination, excludes)
