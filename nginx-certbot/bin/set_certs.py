@@ -7,7 +7,7 @@ import socket
 from dotenv import load_dotenv
 from jinja2 import Template
 
-sleep_in_secs = 60
+sleep_in_secs = 60 * 10
 
 
 def check_if_cert_exists():
