@@ -16,4 +16,4 @@ WORKDIR /opt/nginx-certbot
 COPY . .
 
 # Adding Entrypoint
-ENTRYPOINT [ "/opt/nginx-certbot/bin/newDockerEntrypint.sh" ]
+ENTRYPOINT [ "/opt/nginx-certbot/bin/newDockerEntrypoint.sh" ]
