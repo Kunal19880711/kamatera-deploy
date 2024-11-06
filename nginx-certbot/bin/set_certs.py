@@ -7,7 +7,7 @@ import socket
 from dotenv import load_dotenv
 from jinja2 import Template
 
-sleep_in_secs = 60 * 10
+sleep_in_secs = 60
 
 
 def check_if_cert_exists():
@@ -51,6 +51,19 @@ def check_nodejs_server_active():
         return False
 
 
+def check_nginx_conf_change(file_path, new_conf):
+    """
+    Reads the contents of the nginx.conf file.
+    """
+    if not os.path.exists(file_path):
+        return True
+
+    with open(file_path) as nginx_conf_file:
+        old_conf = nginx_conf_file.read()
+
+    return old_conf != new_conf
+
+
 def set_nginx(is_cert_exists):
     """
     Configures the nginx server to use the SSL certificate for the specified domain
@@ -75,17 +88,44 @@ def set_nginx(is_cert_exists):
         "is_nodejs_server_active": is_nodejs_server_active,
         "is_dhparam_available": is_dhparam_available,
     }
-    print(data)
 
     with open(tmpl_file_path) as tmpl_file:
         template = Template(tmpl_file.read())
 
-    rendered_content = template.render(data)
+    new_conf = template.render(data)
 
-    with open(nginx_conf_path, "w") as nginx_conf_file:
-        nginx_conf_file.write(rendered_content)
+    if check_nginx_conf_change(nginx_conf_path, new_conf):
+        with open(nginx_conf_path, "w") as nginx_conf_file:
+            nginx_conf_file.write(new_conf)
+        subprocess.run(["nginx", "-s", "reload"], check=True)
 
-    subprocess.run(["nginx", "-s", "reload"], check=True)
+
+def check_certificate_validity():
+    """
+    Check if the current certificate is valid using Certbot.
+    """
+    try:
+        # Run Certbot command to check certificate validity
+        output = subprocess.check_output(["certbot", "certificates"])
+        # Parse output to get certificate expiration date
+        expiration_date = None
+        for line in output.decode("utf-8").splitlines():
+            if "Expires" in line:
+                expiration_date = line.split(":")[1].strip()
+                break
+        # Check if certificate is valid (i.e., not expired)
+        if expiration_date:
+            import datetime
+
+            expiration_date = datetime.datetime.strptime(
+                expiration_date, "%Y-%m-%d %H:%M:%S%z"
+            )
+            if expiration_date > datetime.datetime.now():
+                return True
+        return False
+    except subprocess.CalledProcessError as e:
+        print(f"Error checking certificate validity: {e}")
+        return False
 
 
 def renew_cert(email):
@@ -151,15 +191,26 @@ def obtain_cert(email, domain):
 
 
 def setup_certs():
+    """
+    Sets up the SSL certificates for the specified domain.
+
+    This function checks if the SSL certificates and key files exist for the specified domain.
+    If the certificates and key files exist, it sets up the nginx server to use them.
+    If the certificates and key files do not exist, it runs the certbot certonly command to
+    obtain the certificates and sets up the nginx server to use them.
+
+    It also checks the validity of the certificates and renews them if they are not valid.
+    """
     is_cert_exists = check_if_cert_exists()
     email = os.getenv("EMAIL")
     domain = os.getenv("DOMAIN")
 
     if is_cert_exists:
         set_nginx(is_cert_exists)
-        renew_cert(email)
+        is_cert_valid = check_certificate_validity()
+        if not is_cert_valid:
+            renew_cert(email)
     else:
-        set_nginx(is_cert_exists)
         obtain_cert(email, domain)
         is_cert_exists = check_if_cert_exists()
         if is_cert_exists:
