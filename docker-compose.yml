@@ -10,38 +10,31 @@ services:
       - app-network
 
   webserver:
-    image: nginx:mainline-alpine
+    build:
+      context: ./nginx-certbot
+      dockerfile: Dockerfile
+    image: nginx-certbot
     container_name: webserver
     restart: unless-stopped
     ports:
       - "80:80"
       - "443:443"
     volumes:
-      - web-root:/var/www/html
-      - ./nginx-conf:/etc/nginx/conf.d
       - certbot-etc:/etc/letsencrypt
-      - certbot-var:/var/lib/letsencrypt
       - dhparam:/etc/ssl/certs
-    # depends_on:
-    #   - nodejs
+      - ${PWD}/.env:/opt/nginx-certbot/.env
+    depends_on:
+      - nodejs
     networks:
       - app-network
 
-  certbot:
-    image: certbot/certbot
-    container_name: certbot
-    volumes:
-      - certbot-etc:/etc/letsencrypt
-      - certbot-var:/var/lib/letsencrypt
-      - web-root:/var/www/html
-    depends_on:
-      - webserver
-    command: certonly --webroot --webroot-path=/var/www/html --email kunalpalcoder@gmail.com --agree-tos --no-eff-email -d 83-229-3-134.cloud-xip.com  -d www.83-229-3-134.cloud-xip.com
-
 volumes:
   certbot-etc:
-  certbot-var:
-  web-root:
+    driver: local
+    driver_opts:
+      type: none
+      device: ./letsencrypt/
+      o: bind
   dhparam:
     driver: local
     driver_opts:

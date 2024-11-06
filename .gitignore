@@ -1,2 +1,6 @@
 scalarchatterbox
 dhparam
+letsencrypt
+.doit*
+__pycache__
+.env

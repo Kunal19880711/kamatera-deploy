@@ -17,6 +17,9 @@
     ],
     "[nginx]": {
       "editor.defaultFormatter": "raynigon.nginx-formatter"
+    },
+    "[python]": {
+      "editor.defaultFormatter": "charliermarsh.ruff"
     }
   },
   "extensions": {
@@ -37,14 +40,6 @@
   },
   "launch": {
     "version": "0.2.0",
-    "configurations": [
-      {
-        "name": "Sync kamatera",
-        "type": "debugpy",
-        "request": "launch",
-        "program": "${workspaceFolder}/.scripts/sync.py",
-        "console": "integratedTerminal"
-      }
-    ]
+    "configurations": []
   }
 }

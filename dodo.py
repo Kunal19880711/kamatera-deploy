@@ -1,7 +1,9 @@
-#!/usr/bin/env python3
+# dodo.py
 
-import os
 import subprocess
+
+container_name = "webserver1"
+
 
 def rsync(source, destination, excludes):
     """
@@ -19,6 +21,7 @@ def rsync(source, destination, excludes):
     args.extend([source, destination])
     subprocess.run(args)
 
+
 def sync_deployment():
     """
     Synchronizes the current directory with the remote directory at
@@ -34,25 +37,42 @@ def sync_deployment():
     """
     source = "."
     destination = "83-229-3-134.cloud-xip.com:/home/ubuntu/apps/kamatera-deploy"
-    excludes = ["--exclude=kamatera-deploy.code-workspace", "--exclude=.scripts", "--exclude=dhparam"]
+    excluded = [
+        "dhparam",
+        "dodo.py",
+        ".doit.db.*",
+        ".git",
+        ".gitignore",
+        "kamatera-deploy.code-workspace",
+        "letsencrypt",
+        "__pycache__",
+        "README.md",
+    ]
+    excludes = [f"--exclude={item}" for item in excluded]
     rsync(source, destination, excludes)
-    
-def ensure_correct_dir():
-    """
-    Changes the current working directory to the parent directory
-    of the script's location. This ensures that the script is
-    executed with the correct working directory context.
-    """
-    os.chdir(
-        os.path.abspath(
-            os.path.join(
-                os.path.dirname(os.path.realpath(__file__)), 
-                ".."
-            )
-        )
-    )
 
-if __name__ == "__main__":
-    ensure_correct_dir()
-    sync_deployment()
 
+def task_build_nginx():
+    """Task to build the Docker image."""
+    return {
+        "actions": [
+            "docker build -t nginx-certbot nginx-certbot",
+            lambda: True,  # Ensures the task always runs
+        ],
+        "file_dep": ["nginx-certbot/Dockerfile"],
+        "uptodate": [False],  # Forces the task to always run
+    }
+
+
+def task_cleanup():
+    """Task to stop and remove the webserver1 container."""
+    return {
+        "actions": ["docker stop %s" % container_name, "docker rm %s" % container_name]
+    }
+
+
+def task_sync():
+    """Task to run the sync_deployment function."""
+    return {
+        "actions": [sync_deployment],
+    }
