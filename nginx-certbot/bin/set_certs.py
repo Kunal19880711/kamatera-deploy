@@ -3,14 +3,17 @@
 import os
 import subprocess
 import time
+import datetime
 import socket
-from dotenv import load_dotenv
+import traceback
+from urllib.parse import urlparse
+import yaml
 from jinja2 import Template
 
 sleep_in_secs = 60
 
 
-def check_if_cert_exists():
+def check_if_cert_exists(domain):
     """
     Checks if the SSL certificate and private key files exist for the specified domain.
 
@@ -19,35 +22,43 @@ def check_if_cert_exists():
     It returns True if both files exist, indicating that the certificate is present,
     otherwise it returns False.
     """
-    domain = os.getenv("DOMAIN")
-    cert_file_path = os.path.join("/etc/letsencrypt/live", domain, "fullchain.pem")
-    cert_key_file_path = os.path.join("/etc/letsencrypt/live", domain, "privkey.pem")
-    print(cert_file_path, cert_key_file_path)
-    return os.path.exists(cert_file_path) and os.path.exists(cert_key_file_path)
+    cert_file_path = os.path.join("/etc/letsencrypt/live", domain,
+                                  "fullchain.pem")
+    cert_key_file_path = os.path.join("/etc/letsencrypt/live", domain,
+                                      "privkey.pem")
+    return os.path.exists(cert_file_path) and os.path.exists(
+        cert_key_file_path)
 
 
 def check_if_dhparam_available():
     """
     Checks if the dhparam file exists in the /etc/ssl/certs directory.
     """
-    dpparamFilePath = "/etc/ssl/certs/dhparam-2048.pem"
-    return os.path.exists(dpparamFilePath)
+    dhparam_file_path = "/etc/ssl/certs/dhparam-2048.pem"
+    return os.path.exists(dhparam_file_path)
 
 
-def check_nodejs_server_active():
+def check_server_active(url):
     """
-    Checks if the Node.js server is active by attempting to resolve the hostname
-    'scalarchatterbox-node' to an IP address. If the hostname is resolvable, it
+    Checks if the server is active by attempting to resolve the hostname
+    specified in the URL to an IP address. If the hostname is resolvable, it
     indicates that the server is active and running. If the hostname is not
     resolvable, it indicates that the server is not running.
 
     Returns:
-        bool: True if the Node.js server is active, False otherwise.
+        bool: True if the server is active, False otherwise.
     """
+    parsed_url = urlparse(url)
+    host, port = parsed_url.netloc.split(":")
+    port = int(port)
     try:
-        socket.gethostbyaddr("scalarchatterbox-node")
-        return True
-    except socket.herror:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(1)  # set a timeout of 1 second
+        result = sock.connect_ex((host, port))
+        sock.close()
+        return result == 0
+    except Exception as e:
+        print(f"Exception occurred while checking if server is active: {e}")
         return False
 
 
@@ -64,7 +75,7 @@ def check_nginx_conf_change(file_path, new_conf):
     return old_conf != new_conf
 
 
-def set_nginx(is_cert_exists):
+def set_nginx(config):
     """
     Configures the nginx server to use the SSL certificate for the specified domain
     or disable HTTPS if the certificate is not present.
@@ -79,15 +90,17 @@ def set_nginx(is_cert_exists):
     """
     tmpl_file_path = os.path.join("nginx-tmpl", "nginx.conf.jinja")
     nginx_conf_path = os.path.abspath("/etc/nginx/conf.d/nginx.conf")
-    domain = os.getenv("DOMAIN")
-    is_nodejs_server_active = check_nodejs_server_active()
     is_dhparam_available = check_if_dhparam_available()
+
+    for domain_config in config["domains"]:
+        domain_config["is_server_active"] = check_server_active(
+            domain_config["server"])
+
     data = {
-        "domain": domain,
-        "enable_https": is_cert_exists,
-        "is_nodejs_server_active": is_nodejs_server_active,
         "is_dhparam_available": is_dhparam_available,
+        "domains": config["domains"]
     }
+    print(data)
 
     with open(tmpl_file_path) as tmpl_file:
         template = Template(tmpl_file.read())
@@ -108,20 +121,15 @@ def check_certificate_validity():
         # Run Certbot command to check certificate validity
         output = subprocess.check_output(["certbot", "certificates"])
         # Parse output to get certificate expiration date
-        expiration_date = None
         for line in output.decode("utf-8").splitlines():
             if "Expires" in line:
                 expiration_date = line.split(":")[1].strip()
-                break
-        # Check if certificate is valid (i.e., not expired)
-        if expiration_date:
-            import datetime
+                # Check if certificate is valid (i.e., not expired)
+                expiration_date = datetime.datetime.strptime(
+                    expiration_date, "%Y-%m-%d %H:%M:%S%z")
+                if expiration_date > datetime.datetime.now():
+                    return True
 
-            expiration_date = datetime.datetime.strptime(
-                expiration_date, "%Y-%m-%d %H:%M:%S%z"
-            )
-            if expiration_date > datetime.datetime.now():
-                return True
         return False
     except subprocess.CalledProcessError as e:
         print(f"Error checking certificate validity: {e}")
@@ -130,17 +138,14 @@ def check_certificate_validity():
 
 def renew_cert(email):
     """
-    Renews the SSL certificate for the specified domain using certbot.
+    Renews the SSL certificate for the domains that need certificate renewal using Certbot.
 
-    The --force-renewal flag is used to force the renewal of the certificate
-    even if it's not due to expire yet. This is useful for testing purposes.
-
-    The --non-interactive flag is used to prevent certbot from asking user
+    The --non-interactive flag is used to prevent Certbot from asking user
     questions. The --agree-tos flag is used to agree to the terms of service.
     The --email flag is used to specify the contact email address for the
     certificate.
 
-    The function runs the certbot renew command with the given flags and
+    The function runs the Certbot renew command with the given flags and
     checks the return code of the command. If the command fails, the function
     raises a CalledProcessError exception.
     """
@@ -157,67 +162,81 @@ def renew_cert(email):
     )
 
 
-def obtain_cert(email, domain):
+def obtain_cert(email, domains):
     """
-    Obtains the SSL certificate for the specified domain using certbot.
+    Obtains the SSL certificate for the domains needed certificate using Certbot.
 
     The --nginx flag is used to configure the Nginx web server.
-    The --non-interactive flag is used to prevent certbot from asking user
+    The --non-interactive flag is used to prevent Certbot from asking user
     questions. The --agree-tos flag is used to agree to the terms of service.
     The --email flag is used to specify the contact email address for the
     certificate.
 
-    The function runs the certbot certonly command with the given flags and
+    The function runs the Certbot certonly command with the given flags and
     checks the return code of the command. If the command fails, the function
     raises a CalledProcessError exception.
     """
-    subprocess.run(
-        [
-            "certbot",
-            "certonly",
-            "--nginx",
-            "--email",
-            email,
-            "--agree-tos",
-            "-n",
-            "--no-eff-email",
+    args = [
+        "certbot",
+        "certonly",
+        "--nginx",
+        "--email",
+        email,
+        "--agree-tos",
+        "-n",
+        "--no-eff-email",
+    ]
+    for domain in domains:
+        args.extend([
             "-d",
             domain,
             "-d",
             "www." + domain,
-        ],
+        ])
+    subprocess.run(
+        args=args,
         check=True,
     )
 
 
-def setup_certs():
+def setup_certs(config):
     """
-    Sets up the SSL certificates for the specified domain.
+    Sets up the SSL certificates for the specified domains.
 
-    This function checks if the SSL certificates and key files exist for the specified domain.
-    If the certificates and key files exist, it sets up the nginx server to use them.
-    If the certificates and key files do not exist, it runs the certbot certonly command to
-    obtain the certificates and sets up the nginx server to use them.
+    This function checks if the SSL certificates and key files exist for each domain.
+    If the certificates and key files exist, it sets up the Nginx server to use them.
+    If the certificates and key files do not exist, it runs the Certbot certonly command to
+    obtain the certificates and sets up the Nginx server to use them.
 
     It also checks the validity of the certificates and renews them if they are not valid.
     """
-    is_cert_exists = check_if_cert_exists()
-    email = os.getenv("EMAIL")
-    domain = os.getenv("DOMAIN")
+    domains_need_cert = []
+    for domain_config in config["domains"]:
+        domain_config["is_cert_exists"] = check_if_cert_exists(
+            domain_config["domain"])
+        if not domain_config["is_cert_exists"]:
+            domains_need_cert.append(domain_config["domain"])
 
-    if is_cert_exists:
-        set_nginx(is_cert_exists)
-        is_cert_valid = check_certificate_validity()
-        if not is_cert_valid:
-            renew_cert(email)
-    else:
-        obtain_cert(email, domain)
-        is_cert_exists = check_if_cert_exists()
-        if is_cert_exists:
-            print("Certificates are generated successfully.")
-            set_nginx(is_cert_exists)
+    set_nginx(config)
+
+    if not check_certificate_validity():
+        renew_cert(config["email"])
+
+    if not domains_need_cert:
+        return
+
+    obtain_cert(email=config["email"], domains=domains_need_cert)
+    for domain_config in config["domains"]:
+        domain = domain_config["domain"]
+        domain_config["is_cert_exists"] = check_if_cert_exists(domain)
+        if domain_config["is_cert_exists"]:
+            print(
+                f"Certificates are generated successfully for domain [{domain}]."
+            )
         else:
-            print("failed to generate certificates")
+            print(f"failed to generate certificates for domain [{domain}].")
+
+    set_nginx(config)
 
 
 def ensure_correct_dir():
@@ -227,19 +246,33 @@ def ensure_correct_dir():
     executed with the correct working directory context.
     """
     os.chdir(
-        os.path.abspath(os.path.join(os.path.dirname(os.path.realpath(__file__)), ".."))
-    )
+        os.path.abspath(
+            os.path.join(os.path.dirname(os.path.realpath(__file__)), "..")))
+
+
+def load_yaml_config(file_path):
+    """
+    Loads a YAML configuration file and returns its contents as a dictionary.
+
+    Parameters:
+        file_path (str): The path to the YAML configuration file.
+
+    Returns:
+        dict: The contents of the YAML file as a dictionary.
+    """
+    with open(file_path, "r") as file:
+        return yaml.safe_load(file)
 
 
 def main():
     """
-    Ensures the correct directory context, loads the environment variables from the
-    .env file and sets up the SSL certificates.
+    Ensures the correct directory context and sets up the SSL certificates.
     """
     ensure_correct_dir()
-    load_dotenv()
+    config = load_yaml_config(
+        os.path.abspath(os.path.join(os.getcwd(), "config.yaml")))
     while True:
-        setup_certs()
+        setup_certs(dict(config))
         time.sleep(sleep_in_secs)
 
 
@@ -248,3 +281,4 @@ if __name__ == "__main__":
         main()
     except Exception as e:
         print(f"An error occurred: {e}")
+        traceback.print_exc()

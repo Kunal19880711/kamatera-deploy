@@ -25,15 +25,21 @@ def rsync(source, destination, excludes):
 def sync_deployment():
     """
     Synchronizes the current directory with the remote directory at
-    83-229-3-134.cloud-xip.com:/home/ubuntu/apps/kamatera-deploy, using
-    rsync.  This is the deployment script for the Kamatera Docker
-    environment.
+    83-229-3-134.cloud-xip.com:/home/ubuntu/apps/kamatera-deploy using
+    rsync. This script is for deploying to the Kamatera Docker environment.
 
-    The following files and directories are excluded from the
-    synchronization:
-    - .scripts
+    The following files and directories are excluded from synchronization:
+    - .doit.db.*
+    - .git
+    - .gitignore
+    - dodo.py
     - dhparam
     - kamatera-deploy.code-workspace
+    - letsencrypt
+    - __pycache__
+    - README.md
+    - scalarchatterbox
+    - whisperhub
     """
     source = "."
     destination = "83-229-3-134.cloud-xip.com:/home/ubuntu/apps/kamatera-deploy"
@@ -48,6 +54,7 @@ def sync_deployment():
         "__pycache__",
         "README.md",
         "scalarchatterbox",
+        "whisperhub",
     ]
     excludes = [f"--exclude={item}" for item in excluded]
     rsync(source, destination, excludes)
@@ -68,7 +75,26 @@ def task_build_nginx():
 def task_cleanup():
     """Task to stop and remove the webserver1 container."""
     return {
-        "actions": ["docker stop %s" % container_name, "docker rm %s" % container_name]
+        "actions":
+        ["docker stop %s" % container_name,
+         "docker rm %s" % container_name]
+    }
+
+
+def task_run_nginx():
+    """Task to run the nginx-certbot Docker container."""
+    task = " ".join([
+        "docker run -d --name %s -p 80:80 -p 443:443",
+        "-v ./letsencrypt/:/etc/letsencrypt -v ./dhparam/:/etc/ssl/certs",
+        "-v ./config.yaml:/opt/nginx-certbot/config.yaml",
+        "-v ./nginx-certbot/bin:/opt/nginx-certbot/bin",
+        "--restart unless-stopped",
+        "--entrypoint /bin/sh -- nginx-certbot -c 'tail -f /dev/null'"
+    ]) % container_name
+    return {
+        "actions": [task],
+        "file_dep": ["nginx-certbot/Dockerfile"],
+        "uptodate": [False],  # Ensures the task always runs
     }
 
 

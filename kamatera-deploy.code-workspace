@@ -19,7 +19,10 @@
       "editor.defaultFormatter": "raynigon.nginx-formatter"
     },
     "[python]": {
-      "editor.defaultFormatter": "charliermarsh.ruff"
+      "editor.formatOnSaveMode": "file",
+      "editor.formatOnSave": true,
+      "editor.defaultFormatter": "eeyore.yapf",
+      "editor.formatOnType": false
     }
   },
   "extensions": {
@@ -29,7 +32,9 @@
       "esbenp.prettier-vscode",
       "editorconfig.editorconfig",
       "vue.volar",
-      "wayou.vscode-todo-highlight"
+      "wayou.vscode-todo-highlight",
+      "charliermarsh.ruff",
+      "eeyore.yapf"
     ],
     "unwantedRecommendations": [
       "octref.vetur",

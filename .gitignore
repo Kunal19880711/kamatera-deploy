@@ -4,3 +4,4 @@ letsencrypt
 .doit*
 __pycache__
 .env
+config.yaml

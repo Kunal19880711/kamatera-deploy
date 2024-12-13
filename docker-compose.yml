@@ -1,9 +1,19 @@
 services:
-  nodejs:
+  whisperhub:
     build:
-      context: ./scalarchatterbox
+      context: ./whisperhub
       dockerfile: Dockerfile
-    image: kamatera-deploy-nodejs
+    image: whisperhub-node
+    container_name: whisperhub-node
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  scalarchatterbox:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: scalarchatterbox-node
     container_name: scalarchatterbox-node
     restart: unless-stopped
     networks:
@@ -22,9 +32,10 @@ services:
     volumes:
       - certbot-etc:/etc/letsencrypt
       - dhparam:/etc/ssl/certs
-      - ${PWD}/.env:/opt/nginx-certbot/.env
+      - ${PWD}/config.yaml:/opt/nginx-certbot/config.yaml
     depends_on:
-      - nodejs
+      - whisperhub
+      - scalarchatterbox
     networks:
       - app-network
 
